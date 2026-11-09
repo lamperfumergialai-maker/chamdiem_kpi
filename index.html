@@ -56,16 +56,34 @@
             padding-top: 20px;
             margin-top: 20px;
         }
+        .score-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 20px 0;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .score-block {
+            text-align: center;
+        }
+        .score-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
         .score {
             font-size: 24px;
             font-weight: bold;
-            color: #dc3545;
-            text-align: center;
-            margin: 10px 0;
+            color: #333;
         }
-        .score.good {
-            color: #28a745;
-        }
+        /* Màu sắc trạng thái điểm và xếp loại */
+        .rank-xuat-sac { color: #28a745 !important; }
+        .rank-tot { color: #0056b3 !important; }
+        .rank-kha { color: #fd7e14 !important; }
+        .rank-trung-binh { color: #dc3545 !important; }
+
         .reason-table {
             width: 100%;
             border-collapse: collapse;
@@ -93,11 +111,8 @@
     <h2>Tra Cứu Điểm KPI Địa Phương</h2>
     
     <div class="search-box">
-        <!-- Input sử dụng list="unitList" để tự động gợi ý -->
         <input type="text" id="unitInput" list="unitList" placeholder="Nhập hoặc chọn tên đơn vị từ gợi ý...">
-        <datalist id="unitList">
-            <!-- Danh sách gợi ý tự động sinh ra từ dữ liệu bằng Javascript -->
-        </datalist>
+        <datalist id="unitList"></datalist>
         <button onclick="searchKPI()">Tra cứu</button>
     </div>
 
@@ -105,8 +120,17 @@
 
     <div id="resultCard" class="result-card">
         <h3>Đơn vị: <span id="resName">...</span></h3>
-        <p>Tổng điểm KPI đạt được:</p>
-        <div id="resScore" class="score">0 / 100</div>
+        
+        <div class="score-container">
+            <div class="score-block">
+                <div class="score-title">Tổng điểm KPI</div>
+                <div id="resScore" class="score">0 / 100</div>
+            </div>
+            <div class="score-block">
+                <div class="score-title">Xếp loại</div>
+                <div id="resRank" class="score" style="text-transform: uppercase;">...</div>
+            </div>
+        </div>
         
         <h4>Chi tiết căn cứ trừ điểm:</h4>
         <table class="reason-table">
@@ -116,97 +140,136 @@
                     <th>Điểm trừ</th>
                 </tr>
             </thead>
-            <tbody id="resDeductions">
-                <!-- Dữ liệu trừ điểm -->
-            </tbody>
+            <tbody id="resDeductions"></tbody>
         </table>
     </div>
 </div>
 
 <script>
-    // DỮ LIỆU KPI ĐƯỢC CHUYỂN TỪ EXCEL SANG 
-    // Bạn chỉ cần cập nhật danh sách này khi file Excel thay đổi
-    const kpiData = {
-        "quan 1": {
-            name: "Ủy ban Nhân dân Quận 1",
-            score: 92,
-            deductions: [
-                { reason: "Chậm trễ báo cáo số liệu kinh tế tháng 10", points: -5 },
-                { reason: "Giải quyết hồ sơ hành chính quá hạn (2 hồ sơ)", points: -3 }
-            ]
-        },
-        "quan 3": {
-            name: "Ủy ban Nhân dân Quận 3",
-            score: 85,
-            deductions: [
-                { reason: "Tỷ lệ giải ngân vốn đầu tư công đạt dưới tiến độ", points: -10 },
-                { reason: "Không tham gia đầy đủ cuộc họp giao ban tuần 42", points: -5 }
-            ]
-        },
-        "huyen binh chanh": {
-            name: "Ủy ban Nhân dân Huyện Bình Chánh",
-            score: 100,
-            deductions: []
-        },
-        "so y te": {
-            name: "Sở Y tế Thành phố",
-            score: 95,
-            deductions: [
-                { reason: "Phản hồi kiến nghị cử tri chậm muộn", points: -5 }
-            ]
-        }
+    let kpiData = {};
+
+    window.onload = function() {
+        fetch('data.csv?t=' + new Date().getTime())
+            .then(response => response.text())
+            .then(text => {
+                parseCSV(text);
+                generateDataList();
+            })
+            .catch(err => {
+                console.error("Lỗi tải file dữ liệu:", err);
+            });
     };
 
-    // Tự động tạo danh sách gợi ý (Datalist) khi trang web tải xong
-    window.onload = function() {
-        const datalist = document.getElementById("unitList");
-        for (const key in kpiData) {
-            if (kpiData.hasOwnProperty(key)) {
-                let option = document.createElement("option");
-                option.value = kpiData[key].name; // Hiển thị tên đầy đủ để người dùng chọn
-                datalist.appendChild(option);
+    function parseCSV(text) {
+        const lines = text.trim().split('\n');
+        if (lines.length <= 1) return;
+
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+
+            const columns = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+                                    .map(col => col.replace(/^"|"$/g, '').trim());
+
+            if (columns.length < 2) continue;
+
+            const unitName = columns[0];
+            const score = parseInt(columns[1]) || 100;
+            const reason = columns[2] || "";
+            const rank = columns[3] || ""; // Đọc dữ liệu xếp loại từ cột thứ 4
+
+            if (!unitName) continue;
+            const key = unitName.toLowerCase().replace(/\s+/g, ' ');
+
+            if (!kpiData[key]) {
+                kpiData[key] = {
+                    name: unitName,
+                    score: score,
+                    rank: rank,
+                    deductions: []
+                };
+            }
+
+            if (reason && reason !== "" && !["không", "không có", "0"].includes(reason.toLowerCase())) {
+                const numberMatch = reason.match(/\d+/);
+                let pointStr = "Bị trừ";
+                if (numberMatch) {
+                    pointStr = "-" + numberMatch[0];
+                }
+                
+                kpiData[key].deductions.push({
+                    reason: reason,
+                    points: pointStr
+                });
             }
         }
-    };
+    }
+
+    function generateDataList() {
+        const datalist = document.getElementById("unitList");
+        datalist.innerHTML = "";
+        for (const key in kpiData) {
+            let option = document.createElement("option");
+            option.value = kpiData[key].name;
+            datalist.appendChild(option);
+        }
+    }
 
     function searchKPI() {
-        const input = document.getElementById("unitInput").value.trim();
+        const input = document.getElementById("unitInput").value.trim().toLowerCase().replace(/\s+/g, ' ');
         const resultCard = document.getElementById("resultCard");
         const errorMsg = document.getElementById("errorMsg");
         const resDeductions = document.getElementById("resDeductions");
 
         resDeductions.innerHTML = "";
-        let foundData = null;
-
-        // Tìm kiếm đối chiếu theo Tên đầy đủ được chọn từ danh sách gợi ý
-        for (const key in kpiData) {
-            if (kpiData[key].name.toLowerCase() === input.toLowerCase()) {
-                foundData = kpiData[key];
-                break;
-            }
-        }
+        let foundData = kpiData[input];
 
         if (foundData) {
             errorMsg.style.display = "none";
             resultCard.style.display = "block";
             
             document.getElementById("resName").innerText = foundData.name;
+            
+            // Hiển thị điểm số
             const scoreDiv = document.getElementById("resScore");
             scoreDiv.innerText = foundData.score + " / 100";
             
-            if(foundData.score >= 90) {
-                scoreDiv.className = "score good";
+            // Xử lý hiển thị xếp loại và đổi màu sắc tương ứng
+            const rankDiv = document.getElementById("resRank");
+            let rankText = foundData.rank;
+            
+            // Dự phòng nếu cột xếp loại trên Sheet bị trống, hệ thống tự tính toán loại
+            if (!rankText) {
+                if (foundData.score >= 90) rankText = "Xuất sắc";
+                else if (foundData.score >= 80) rankText = "Tốt";
+                else if (foundData.score >= 70) rankText = "Khá";
+                else rankText = "Trung bình";
+            }
+            rankDiv.innerText = rankText;
+
+            // Gán Class màu sắc dựa trên văn bản xếp loại
+            scoreDiv.className = "score";
+            if (rankText.toLowerCase().includes("xuất sắc")) {
+                rankDiv.className = "score rank-xuat-sac";
+                scoreDiv.classList.add("rank-xuat-sac");
+            } else if (rankText.toLowerCase().includes("tốt")) {
+                rankDiv.className = "score rank-tot";
+                scoreDiv.classList.add("rank-tot");
+            } else if (rankText.toLowerCase().includes("khá")) {
+                rankDiv.className = "score rank-kha";
+                scoreDiv.classList.add("rank-kha");
             } else {
-                scoreDiv.className = "score";
+                rankDiv.className = "score rank-trung-binh";
+                scoreDiv.classList.add("rank-trung-binh");
             }
 
+            // Hiển thị danh sách điểm trừ
             if (foundData.deductions.length === 0) {
-                resDeductions.innerHTML = `<tr><td colspan="2" style="text-align:center; color:green;">Đơn vị xuất sắc, không bị trừ điểm!</td></tr>`;
+                resDeductions.innerHTML = `<tr><td colspan="2" style="text-align:center; color:green; font-weight:bold;">Đơn vị xuất sắc, không bị trừ điểm!</td></tr>`;
             } else {
                 foundData.deductions.forEach(item => {
                     let row = `<tr>
                         <td>${item.reason}</td>
-                        <td style="color:red; font-weight:bold;">${item.points}</td>
+                        <td style="color:red; font-weight:bold; text-align:center;">${item.points}</td>
                     </tr>`;
                     resDeductions.innerHTML += row;
                 });
@@ -223,6 +286,5 @@
         }
     });
 </script>
-
 </body>
 </html>
