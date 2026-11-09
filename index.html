@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tra cứu Điểm KPI Đơn Vị Địa Phương</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f6f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            color: #0056b3;
+            margin-bottom: 20px;
+        }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #004085;
+        }
+        .result-card {
+            display: none;
+            border-top: 2px solid #0056b3;
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #dc3545;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .score.good {
+            color: #28a745;
+        }
+        .reason-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .reason-table th, .reason-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        .reason-table th {
+            background-color: #f8f9fa;
+        }
+        .error-msg {
+            color: #dc3545;
+            text-align: center;
+            display: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Tra Cứu Điểm KPI Địa Phương</h2>
+    
+    <div class="search-box">
+        <!-- Input sử dụng list="unitList" để tự động gợi ý -->
+        <input type="text" id="unitInput" list="unitList" placeholder="Nhập hoặc chọn tên đơn vị từ gợi ý...">
+        <datalist id="unitList">
+            <!-- Danh sách gợi ý tự động sinh ra từ dữ liệu bằng Javascript -->
+        </datalist>
+        <button onclick="searchKPI()">Tra cứu</button>
+    </div>
+
+    <p id="errorMsg" class="error-msg">Không tìm thấy đơn vị này. Vui lòng chọn đúng tên trong danh sách gợi ý!</p>
+
+    <div id="resultCard" class="result-card">
+        <h3>Đơn vị: <span id="resName">...</span></h3>
+        <p>Tổng điểm KPI đạt được:</p>
+        <div id="resScore" class="score">0 / 100</div>
+        
+        <h4>Chi tiết căn cứ trừ điểm:</h4>
+        <table class="reason-table">
+            <thead>
+                <tr>
+                    <th>Nội dung sai phạm / Chậm trễ</th>
+                    <th>Điểm trừ</th>
+                </tr>
+            </thead>
+            <tbody id="resDeductions">
+                <!-- Dữ liệu trừ điểm -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // DỮ LIỆU KPI ĐƯỢC CHUYỂN TỪ EXCEL SANG 
+    // Bạn chỉ cần cập nhật danh sách này khi file Excel thay đổi
+    const kpiData = {
+        "quan 1": {
+            name: "Ủy ban Nhân dân Quận 1",
+            score: 92,
+            deductions: [
+                { reason: "Chậm trễ báo cáo số liệu kinh tế tháng 10", points: -5 },
+                { reason: "Giải quyết hồ sơ hành chính quá hạn (2 hồ sơ)", points: -3 }
+            ]
+        },
+        "quan 3": {
+            name: "Ủy ban Nhân dân Quận 3",
+            score: 85,
+            deductions: [
+                { reason: "Tỷ lệ giải ngân vốn đầu tư công đạt dưới tiến độ", points: -10 },
+                { reason: "Không tham gia đầy đủ cuộc họp giao ban tuần 42", points: -5 }
+            ]
+        },
+        "huyen binh chanh": {
+            name: "Ủy ban Nhân dân Huyện Bình Chánh",
+            score: 100,
+            deductions: []
+        },
+        "so y te": {
+            name: "Sở Y tế Thành phố",
+            score: 95,
+            deductions: [
+                { reason: "Phản hồi kiến nghị cử tri chậm muộn", points: -5 }
+            ]
+        }
+    };
+
+    // Tự động tạo danh sách gợi ý (Datalist) khi trang web tải xong
+    window.onload = function() {
+        const datalist = document.getElementById("unitList");
+        for (const key in kpiData) {
+            if (kpiData.hasOwnProperty(key)) {
+                let option = document.createElement("option");
+                option.value = kpiData[key].name; // Hiển thị tên đầy đủ để người dùng chọn
+                datalist.appendChild(option);
+            }
+        }
+    };
+
+    function searchKPI() {
+        const input = document.getElementById("unitInput").value.trim();
+        const resultCard = document.getElementById("resultCard");
+        const errorMsg = document.getElementById("errorMsg");
+        const resDeductions = document.getElementById("resDeductions");
+
+        resDeductions.innerHTML = "";
+        let foundData = null;
+
+        // Tìm kiếm đối chiếu theo Tên đầy đủ được chọn từ danh sách gợi ý
+        for (const key in kpiData) {
+            if (kpiData[key].name.toLowerCase() === input.toLowerCase()) {
+                foundData = kpiData[key];
+                break;
+            }
+        }
+
+        if (foundData) {
+            errorMsg.style.display = "none";
+            resultCard.style.display = "block";
+            
+            document.getElementById("resName").innerText = foundData.name;
+            const scoreDiv = document.getElementById("resScore");
+            scoreDiv.innerText = foundData.score + " / 100";
+            
+            if(foundData.score >= 90) {
+                scoreDiv.className = "score good";
+            } else {
+                scoreDiv.className = "score";
+            }
+
+            if (foundData.deductions.length === 0) {
+                resDeductions.innerHTML = `<tr><td colspan="2" style="text-align:center; color:green;">Đơn vị xuất sắc, không bị trừ điểm!</td></tr>`;
+            } else {
+                foundData.deductions.forEach(item => {
+                    let row = `<tr>
+                        <td>${item.reason}</td>
+                        <td style="color:red; font-weight:bold;">${item.points}</td>
+                    </tr>`;
+                    resDeductions.innerHTML += row;
+                });
+            }
+        } else {
+            resultCard.style.display = "none";
+            errorMsg.style.display = "block";
+        }
+    }
+
+    document.getElementById("unitInput").addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            searchKPI();
+        }
+    });
+</script>
+
+</body>
+</html>
